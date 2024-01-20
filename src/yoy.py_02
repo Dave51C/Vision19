@@ -1,0 +1,27 @@
+import cv2 as cv
+import numpy as np
+#import time
+#import math
+
+GREEN_MIN = np.array([55,175,175],np.uint8)
+GREEN_MAX = np.array([64,255,255],np.uint8)
+
+img       = cv.imread('../images/Field/IMG_6339.JPG')
+imghsv    = cv.cvtColor(img, cv.COLOR_BGR2HSV)
+#cv.imshow('HSV',imghsv)
+dst       = cv.resize(imghsv,None,fx=0.20,fy=0.20,interpolation=cv.INTER_AREA)
+cv.imshow('dst',dst)
+
+blurred   = cv.GaussianBlur(dst,(5,5),0)
+greenimg  = cv.inRange(blurred, GREEN_MIN, GREEN_MAX)
+cntimg,contours,hierarchy = cv.findContours(greenimg, 1, 2)
+print ('# of Contours: ' + str(len(contours)))
+for I in range(len(contours)):
+    rect = cv.minAreaRect(contours[I])
+    box  = cv.boxPoints(rect)
+    box  = np.int0(box)
+    cv.drawContours(dst,[box],0,(255,0,0),3)
+cv.imshow('B&W', greenimg)
+cv.imshow('contours', dst)
+cv.waitKey(0)
+cv.destroyAllWindows()

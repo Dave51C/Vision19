@@ -1,0 +1,12 @@
+Insert SOURCE SD
+diskutil list
+sudo dd bs=1m if=/dev/rdisk3 of=~Animation/Desktop/Vision/JeVois111.dmg # Disk nbr may differ, use "rdisk" (not "disk")
+
+How to re-image Pi SD card:
+Insert TARGET SD
+diskutil list
+diskutil unmountDisk /dev/disk3                                # It may be a different disk nbr.
+sudo newfs_msdos -F 16 /dev/disk3
+sudo dd bs=1m if=~Animation/Desktop/Vision/raspberrypi.dmg of=/dev/rdisk3      # Using "rdisk3" rather than "disk3" is crucial.
+- or -
+gzip -dc raspberrypi_OpenCV_20180318.dmg.gz | sudo dd bs=1m of=/dev/rdisk3

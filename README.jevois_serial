@@ -1,0 +1,8 @@
+HOW TO OPEN TERMINAL SESSION TO JEVOIS
+======================================
+1) Connect JeVois using serial-to-USB cable
+2) ls /dev/cu.usbmodem*
+3) minicom
+
+Remember, all commands must be prefixed with "shell "
+

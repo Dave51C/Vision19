@@ -1,0 +1,29 @@
+import multiprocessing as mp
+import time
+import cv2
+pipe_r, pipe_w = mp.Pipe()         # create pipe for passing image
+
+def image_processing (comm,wkimg):
+#    print("Processing")
+    message = comm.recv()
+#    print(message)
+    dst = cv2.resize(wkimg,None,fx=0.20,fy=0.20,interpolation=cv2.INTER_AREA)
+    """
+    do all that GRIP stuff
+    do all that Target stuff
+    """
+#    print("Done")
+    cv2.imwrite('dst.png',dst)
+
+inimg = cv2.imread('../images/Field/IMG_6339.JPG')
+pipe_w.send("WTF?")
+n=0
+while True:
+#    print("Spawning")
+    p     = mp.Process(target=image_processing,args=(pipe_r,inimg))
+    n+=1
+    print("Sending "+str(n))
+    pipe_w.send("OMG")
+    p.start()
+#    print("Waiting")
+    p.join()

@@ -1,0 +1,40 @@
+    # ###################################################################################################
+    ## Process function with no USB output
+    def processNoUSB(self, inframe):
+        # Create a parallel processing pool and a timer, if needed (on first frame only):
+        if not hasattr(self, 'pool'):
+            # create a multiprocessing pool, not specifying the number of processes, to use the number of cores:
+            self.pool = mp.Pool()
+            # Instantiate a JeVois Timer to measure our processing framerate:
+            self.timer = jevois.Timer("PythonParallel", 100, jevois.LOG_INFO)
+        
+        # Get the next camera image (may block until it is captured) and convert it to OpenCV GRAY:
+        inimggray = inframe.getCvGRAY()
+            
+        # Start measuring image processing time (NOTE: does not account for input conversion time):
+        self.timer.start()
+            
+        # Detect edges using the Canny algorithm from OpenCV, launching 4 instances in parallel:
+        futures = [ self.pool.apply_async(computefunc, args = (inimggray, 10*x, 20*x, )) for x in range(1,5) ]
+
+        # Collect the results, handling any exception thrown by the workers. Here, we make sure we get() all the results
+        # first, then rethrow the last exception received, if any, so that we do ensure that all results will be
+        # collected before we bail out on an exception:
+        results = []
+        error = 0
+        for ii in range(4):
+            try: results.append(futures[ii].get(timeout = 10))
+            except Exception as e: error = e
+        if error: raise error
+            
+        # In real modules, we would do something with the results... Here, just report their size:
+        str = ""
+        for ii in range(4):
+            h, w = results[ii].shape
+            str += "Canny {}: {}x{}    ".format(ii, w, h)
+
+        # Send a message to serout:
+        jevois.sendSerial(str)
+
+        # Report frames/s info to serlog:
+        self.timer.stop()

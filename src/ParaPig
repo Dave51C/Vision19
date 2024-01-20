@@ -1,0 +1,34 @@
+Option 1: frame get is parent process
+Option 2: image process is parent process
+
+Option 1:
+========
+import <all the libs>
+import multiprocessing as mp
+import time
+import cv2
+pipe_in, pipe_out = mp.Pipe()         # create pipe for passing image
+
+def image_processing (img):
+    outimg = pipe_out.recv(img)
+    time.sleep(5)
+    """
+    do all that GRIP stuff
+    do all that Target stuff
+    """
+#    sendCvBRG(outimg)
+    dst = cv.resize(outimg,None,fx=0.20,fy=0.20,interpolation=cv.INTER_AREA)
+    cv2.imshow('dst',dst)
+    cv2.waitKey(0)
+
+
+#inimg=inframe.getCvBGR()
+inimg = cv2.imread('../images/Field/IMG_6339.JPG')
+while TRUE:
+    pipe_in.send(inimg)
+    p     = mp.Process(target=image_processing,args=(pipe_in,))
+    p.start()
+#    inimg = inframe.getCvBGR()
+    inimg = cv2.imread('../images/Field/IMG_6339.JPG')
+    p.join()
+#    inframe.done()

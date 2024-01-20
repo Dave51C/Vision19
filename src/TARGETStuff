@@ -1,0 +1,378 @@
+        ### Start Non-Grip Common/Default Code
+
+        def sort_contours(cnts, method = "left-to-right"):
+            
+            jevois.LINFO("In sort contours!" + str(len(cnts)))
+                            
+            reverse = False
+            i=0
+        
+            if method == "right-to-left" or method == "bottom-to-top":
+                reverse = True
+            
+            if method == "top-to-bottom" or method == "bottom-to-top":
+                i=i
+            
+            boundingBoxes = [cv2.boundingRect(c) for c in cnts]
+            (cnts, boundingBoxes) = zip(*sorted(zip(cnts, boundingBoxes),key=lambda b:b[1][i], reverse=reverse))
+        
+            return (cnts, boundingBoxes)    
+
+        def draw_contour(image, c, i):
+            M = cv2.moments(c)
+            cX = int(M["m10"]/M["m00"])
+            cY = int(M["m01"]/M["m00"])
+        
+            cv2.putText(image, "#{}".format(i+1),(cX-20,cY),font, font_size, (255,255,255), 2)
+        
+            return image
+             
+        ### Start Additional Non-Grip Custom Code
+          
+# Constants and Variables---The following is all of our constants and variables we use in our formulas later in the code. :D
+        b = 61
+        g = 260
+        r = 148
+        direction = "hatch"
+        font = 1
+        font_size = 1  
+        w, h = 2, 2;
+        contour_keeper = [[0 for x in range(w)] for y in range(h)] 
+        tape_keeper = [] 
+        cx = 0
+        cy = 0
+        closest_dock = -99.99
+        VERTICAL_FOV = 52
+        VERTICAL_PXL_PER_DEGREE = 9.23      # 480/52
+        HORIZONTAL_PXL_PER_DEGREE = 9.85    # 640/65
+        HORIZON_Y = 500
+        camera_distance_from_front_bumper = 5
+        #SETTING VALUES FOR HATCH VS CARGO :D
+        if direction == "hatch":
+            CAMERA_X_OFFSET = 5.5
+            CAMERA_HEIGHT = 9.0 #really 10.0 but decreased to increase distance
+            TARGET_HEIGHT = 31.5
+            CALIBRATION_FACTOR = 0
+            DEGREES_OFFSET = -21.5
+            VERTICAL_DEGREES_OFFSET = 30.0
+        else:
+            CAMERA_X_OFFSET = 5.5
+            CAMERA_HEIGHT = 46.0
+            TARGET_HEIGHT = 31.5
+            CALIBRATION_FACTOR = -30
+            DEGREES_OFFSET = 7
+                
+        # Draws all contours on original image in red
+        cv2.drawContours(outimg, self.filter_contours_output, -1, (0, 0, 250), 1)
+        
+        # Draw screen grid #This is the code that sets up a grip pattern on the display screen. Green ticks will be placed at every 10 pixels while red ticks will be placed every 100.
+        if headless == False and debug == True:
+            # X axis grid
+            for pixel in range(100,640, 100):
+                cv2.putText(outimg, "||", (pixel, 460), font, font_size, (0, 0, 255), 1, cv2.LINE_AA)
+            for pixel in range(20, 640, 10):
+                cv2.putText(outimg, "|", (pixel, 460), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            for pixel in range(20, 640, 10):
+                cv2.putText(outimg, str(round((pixel%100)*.1)), (pixel, 445), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+            # Y axis grid        
+            for pixel in range(100, 480, 100):
+                cv2.putText(outimg, "=", (1,pixel), font, font_size, (0, 0, 255), 1, cv2.LINE_AA)
+            for pixel in range(20, 480, 10):
+                cv2.putText(outimg, "-", (1,pixel), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            for pixel in range(20, 480, 10):
+                cv2.putText(outimg, str(round((pixel%100)*.1)), (15,pixel), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+       
+        # Gets number of contours
+        NumOfContours = len(self.filter_contours_output)
+        
+        # Sorts contours from left to right
+        newContours = sorted(self.filter_contours_output, key=lambda ctr: cv2.boundingRect(ctr)[0])
+                               
+        #Organize the contours we found
+        jevois.LINFO("About to run through contours: " + str(NumOfContours) + " to see if the are tapes")
+        if NumOfContours != 0:                   # If there are things to analyze in the image...
+            for i in range (NumOfContours):      # Loop through everything found...
+                cnt = newContours[i]
+                
+                rect = cv2.minAreaRect(cnt)
+                
+                box = cv2.boxPoints(rect)
+                box = np.int0(box)
+                x,y,theta = cv2.minAreaRect(cnt)
+
+                jevois.LINFO("Contour: " + str(i))
+                jevois.LINFO("=================")
+                jevois.LINFO("x[0] or CX = " + str(x[0]))
+                jevois.LINFO("x[1] or CY = " + str(x[1]))
+                jevois.LINFO("y[0] or W = " + str(y[0]))
+                jevois.LINFO("y[1] or H = " + str(y[1]))
+                jevois.LINFO("angle = " + str(theta))
+                                                
+                cv2.drawContours(outimg,[box],0,(0,255,0),2)
+                if headless == False and debug == True: cv2.putText(outimg, "C" + str(i) + " at " + str(round(theta)) + "'", (round(x[0]-30),round(x[1]+80)), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+                cnt_area = cv2.contourArea(cnt)
+                hull = cv2.convexHull(cnt)
+                hull_area = cv2.contourArea(hull)
+                p = cv2.approxPolyDP(hull, -1, 1)
+        
+                # Determine if something is a piece of tape correctly angled or not
+                #Theta is the angle of the rectangle returned by the minAreaRect method imported above :D
+                if (theta > -30 and theta < -4) and theta != 0.0:
+                    tape_keeper.insert(i,[x,y,"L"])
+                elif (theta > -85 and theta < -60) and theta != 0.0:
+                    tape_keeper.insert(i,[x,y,"R"])
+   
+            # Now we only have angled good tapes, so we loop through and identify docks
+            if len(tape_keeper) != 0:
+                 jevois.LINFO("Looping through " + str(len(tape_keeper)) + " found tapes and determining docks.")
+                 if headless == False and debug == True: cv2.putText(outimg, "Tracking " + str(len(tape_keeper)) + " tapes!",(25,60), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+                 left_side = False      # flag indicating just saw a left (right leaning) piece of tape
+                 right_side = False     # flag indicating just saw a right (left leaning) piece of tape
+                 target_found = False   # flag indicating we found a left and right pair - a port!
+                 target_number = 0      # number of pairs found
+
+                 t = len(tape_keeper)   # t gets the number of pieces of tape.                 
+                 
+                 # Loop through the number of found pairs of tape
+                 for ctr in range(t):
+                     jevois.LINFO("Looking at a " + tape_keeper[ctr][2])
+
+                     # If it's a left side, indicate it's point right...
+                     if str(tape_keeper[ctr][2]) == "R":
+                        left_side = True
+                     # If it's a right side, indicate it's pointing left...
+                     elif str(tape_keeper[ctr][2]) == "L" and left_side == True:
+                        target_found = True
+                        target_number = target_number + 1
+                        left_side = False
+                        right_side = False
+                        jevois.LINFO("Found a full target!!!!")
+                        
+                        # Save the center X and center Y for this particular matching pair
+                        cx = round(tape_keeper[ctr-1][0][0] + (.5 * (tape_keeper[ctr][0][0]-tape_keeper[ctr-1][0][0]))) + round(CAMERA_X_OFFSET)
+                        #cy = round((tape_keeper[ctr][0][1]+tape_keeper[ctr-1][0][1])/2)
+                        
+                        # THIS IS WHERE WE SET THE X AND Y VALUES OF THE TARGET'S TAPES :D
+                        left_tape_x = round(tape_keeper[ctr-1][0][0]+tape_keeper[ctr-1][1][1]) #The value returned as the x coordinate is the upper left hand corner, so we must add the width of the min area rectangle.
+                        left_tape_y = round(tape_keeper[ctr-1][0][1])+round(tape_keeper[ctr-1][1][1])/2
+                        right_tape_x = round(tape_keeper[ctr][0][0])-33
+                        right_tape_y = round(tape_keeper[ctr][0][1])+round(tape_keeper[ctr-1][1][1])/2
+                        cy = round((right_tape_y+left_tape_y)/2) #This takes the average of the y values to find the center y value of the target :D
+                        
+            #--------------------------------------------HORIZONTAL ANGLES--------------------------------------------#
+                        #Calculates the horizontal degrees to target using the difference between center x and the center of the image.
+                        degrees_to_target = (cx - 320)/HORIZONTAL_PXL_PER_DEGREE + DEGREES_OFFSET
+                        #The following finds the horizontal angles to each tapes by subtracting the x values of each and finding the distance in pixels to the center of the image. 
+                        #The 9 is the number of pixels per degree in the FOV. 
+                        
+                        angle_to_left_tape = (left_tape_x - 320)/HORIZONTAL_PXL_PER_DEGREE + DEGREES_OFFSET
+                        angle_to_right_tape = (right_tape_x - 320)/HORIZONTAL_PXL_PER_DEGREE + DEGREES_OFFSET
+                        
+                        if abs(degrees_to_target) < abs(closest_dock):
+                            closest_dock = degrees_to_target
+                            closest_dock_cx = cx
+                            closest_dock_cy = cy
+                           
+#-------------------Same thing as above but consolidated into one loop for calculating and displaying distance and vertical angle-----------#
+            if closest_dock != -99.99:
+
+           #---------------------------------------------VERTICAL ANGLES------------------------------------------------#
+                        if headless == False and debug == True: cv2.putText(outimg, "cy = " + str(cy) + " horizon_y " + str(HORIZON_Y),(25,90), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        if headless == False and debug == True: cv2.line(outimg,(0,HORIZON_Y),(640,HORIZON_Y),(0,0,255),thickness=1,lineType=8,shift=0)
+                        
+                        # Left Tape angle
+                        #The following finds the vertical angle of the target to the robot by taking the y coordinate of the tape and subtracting 405 pixels.
+                        #the horizon_y = 405 is simply taking into account the camera's tilt (it's calibrated not an exact value) :D
+                        #vertical_angle = ((abs((cy-HORIZON_Y)) / VERTICAL_PXL_PER_DEGREE)/ 2) 
+
+                        # Right Tape--This does the same thing but for right tapes the t-1 is to make sure you're not at the end
+                        #if ctr != t - 1: vertical_angle = ((abs((tape_keeper[ctr+1][0][1]-HORIZON_Y)) / VERTICAL_PXL_PER_DEGREE)/ 2) 
+                        
+                        #These two lines find the vertical angles of the right and left tapes of the target the same way as finding the vertical angle for turning. :D
+                        left_vert = (abs(left_tape_y - HORIZON_Y) / VERTICAL_PXL_PER_DEGREE) + math.radians(VERTICAL_DEGREES_OFFSET) 
+                        right_vert = (abs(right_tape_y - HORIZON_Y) / VERTICAL_PXL_PER_DEGREE)+ math.radians(VERTICAL_DEGREES_OFFSET) 
+                                  
+
+#-----------------------------------------------Basic Distances-------------------------------------------#
+                        #Finds the distances to the left and right tapes by using the same function and switching vertical angle with left and right angles. 
+                        if direction == "hatch":  # Low Camera!
+                            distance_to_left_tape = (TARGET_HEIGHT - CAMERA_HEIGHT) /((math.tan(math.radians(left_vert)))) #39 
+                            distance_to_right_tape = (TARGET_HEIGHT - CAMERA_HEIGHT) /((math.tan(math.radians(right_vert))))  #42
+                        else:
+                            distance_to_left_tape = (CAMERA_HEIGHT - TARGET_HEIGHT) /((math.tan(math.radians(left_vert))))
+                            distance_to_right_tape = (CAMERA_HEIGHT - TARGET_HEIGHT) /((math.tan(math.radians(right_vert))))
+
+#---------------------------------------Zig Zag method calculations for distance--------------------------#
+                        #Our calculation to turn go forward and turn 
+                        df = distance_to_right_tape
+                        dn = distance_to_left_tape
+                        ang = math.asin(math.sin(math.radians(angle_to_right_tape))*dn/df)
+                        q=11.0/(2*math.cos(ang))
+                        z=df-q
+                        if headless == False:
+                            cv2.putText(outimg, "Dock " + str(target_number),(cx-20,cy+10), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                            if headless == False and debug == True:
+                                cv2.putText(outimg, "Distance between the turns is: " + str(round(z,2)), (360, 95), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "Angle to Left Tape = " + str(round(angle_to_left_tape,2))+"'", (360, 35), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "Angle to Right Tape = " + str(round(angle_to_right_tape,2))+"'", (360, 50), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "Distance to right Tape = " + str(round(distance_to_right_tape,2)), (360, 80), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "Distance to Left Tape = " + str(round(distance_to_left_tape,2)), (360, 65), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "left vertical angle = " + str(round(left_vert,2))+"'", (360, 115), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "right vertical angle =  " + str(round(right_vert,2)) +"'", (360, 130), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, "Ltape:" + str(left_tape_x) + "," + str(left_tape_y) + "; Rtape > " + str(right_tape_x) + "," + str(right_tape_y),(360, 20), font, font_size, (b, g, r), 1, cv2.LINE_AA)  
+                                cv2.putText(outimg, " (" + str(cx) + "," + str(cy) + ")",(cx-40,cy+25), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                                cv2.putText(outimg, str(round(degrees_to_target-DEGREES_OFFSET,1)) +"' (" + str(round(degrees_to_target)) + " Real)",(cx-60,cy+42), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+                        if degrees_to_target < -2:
+                            cv2.putText(outimg, "<--", (cx+100, cy), 4, font_size*3, (255,20,255), 4, cv2.LINE_AA)
+                            # cv2.putText(outimg, "RIGHT", (cx+100, cy-40), 4, font_size, (255,20,255), 1, cv2.LINE_AA)
+                        elif degrees_to_target > 2:
+                            # cv2.putText(outimg, "LEFT", (cx+100, cy-40), 4, font_size*5, (255,20,255), 2, cv2.LINE_AA)
+                            cv2.putText(outimg, "-->", (cx+100, cy),4, font_size*3, (255,20,255), 4, cv2.LINE_AA)
+
+#---------------------------------------------------------Hard Trig Stuff <3-----------------------------------------------#
+                #-------------------------------------BASIC SIX VALUES------------------------#
+                        ID = 18 #distance to stop at 
+                        LA = angle_to_left_tape
+                        LD = distance_to_left_tape
+                        RA = angle_to_right_tape
+                        RD = distance_to_right_tape
+                        TG = 10.0 #distance between tapes
+                        DA = abs(LA-RA)
+                 #--------------------------------INTERMEDIATE CALCULATIONS-------------------#
+                        """ minD = min(LD,RD)
+                        MD = max(LD,RD)
+                        if MD == LD:
+                            MA = LA
+                        else:
+                            MA = RA
+                        cv2.putText(outimg, "JEEPERS:  " + str(minD*math.sin(math.radians(DA))/TG), (360, 180), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "INTERMEDIATE VALUES", (25,125), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "minD: " + str(minD), (50, 160), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "MA: " + str(MA), (50,180), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "MD: " + str(MD), (50, 200), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "Y: " + str(round(Y,2)), (50, 260), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "X: " + str(round(X,2)), (50, 220), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "m: " + str(round(m,2)), (50, 280), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "n: " + str(round(n,2)), (50, 300), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "DELTA: " + str(round(DELTA,2)), (50, 320), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "BETA: " + str(round(BETA,2)), (50, 140), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "X2: " + str(round(X2,2)), (50, 240), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "DA: " + str(round(DA,2)), (150, 180), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+                 #-----------------------OUTPUT VALUES--TURNS AND DISTANCES-------------------#
+                        D4 = m/math.sin(math.radians(DELTA))
+                        #THIS WILL BE OUR FIRST TURN IN DEGREES 
+                        if MD == RD:
+                            THETA = MA + DELTA
+                        else:
+                            THETA = MA - DELTA
+                        if MD == LD:
+                            GAMMA = 90 - BETA + DELTA
+                        else:
+                            GAMMA = BETA - DELTA - 90
+                        D5 = ID
+                        cv2.putText(outimg, "OUTPUTS", (30, 340), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "Theta: " + str(round(THETA)), (50, 360), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "D4: " + str(round(D4)), (50, 380), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "Gamma: " + str(round(GAMMA)), (50, 400), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                        cv2.putText(outimg, "D5: " + str(round(D5)), (50, 420), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+"""#--------------------------------------------------Display art--------------------------------------------#
+                        total = 0
+                        for ctr in range(len(tape_keeper)):
+                            total = total + degrees_to_target
+                        for ctr in range(len(tape_keeper)):
+                            x_val = tape_keeper[ctr][0][0]
+                            y_val = tape_keeper[ctr][0][1]
+                            #THE BEAUTIFUL TARGETING CIRCLES OF AWESOMENESS!! This makes the fancy fighter-jet-like display. :D
+                            if headless == False:
+                                if -5 < degrees_to_target < 5: 
+                                    cv2.circle(outimg,(cx,cy),100,(0,255,0),thickness=2,lineType=8,shift=0)
+                                    cv2.circle(outimg,(cx,cy),75,(0,255,0),thickness=1,lineType=8,shift=0)
+                                    cv2.circle(outimg,(cx,cy),50,(0,255,0),thickness=1,lineType=8,shift=0)
+                                    cv2.putText(outimg, "-", (cx-66, cy), font, font_size, (0, 255, 0), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy-60), font, font_size, (0, 255, 0), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy+66), font, font_size, (0, 255, 0), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "-", (cx+60, cy), font, font_size, (0, 255, 0), 1, cv2.LINE_AA)
+                   
+                                    if str(round(time.process_time(),1))[-1] == "0" or str(round(time.process_time(),1))[-1] == "1" or str(round(time.process_time(),1))[-1] == "4" or str(round(time.process_time(),1))[-1] == "7":
+                                        cv2.circle(outimg,(cx,cy),50,(0,255,0),thickness=3,lineType=8,shift=0)
+                                    elif str(round(time.process_time(),1))[-1] == "0" or str(round(time.process_time(),1))[-1] == "2" or str(round(time.process_time(),1))[-1] == "5" or str(round(time.process_time(),1))[-1] == "8":
+                                        cv2.circle(outimg,(cx,cy),100,(0,255,0),thickness=3,lineType=8,shift=0)
+                                    elif str(round(time.process_time(),1))[-1] == "0" or str(round(time.process_time(),1))[-1] == "3" or str(round(time.process_time(),1))[-1] == "6" or str(round(time.process_time(),1))[-1] == "9":
+                                        cv2.circle(outimg,(cx,cy),75,(0,255,0),thickness=3,lineType=8,shift=0)    
+
+                                elif -15 < degrees_to_target < 50:
+                                    cv2.circle(outimg,(cx,cy),100,(0,255,255),thickness=2,lineType=8,shift=0)
+                                    cv2.circle(outimg,(cx,cy),75,(0,255,255),thickness=1,lineType=8,shift=0)
+                                    cv2.putText(outimg, "-", (cx-60, cy), font, font_size, (0,255,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy-60), font, font_size, (0,255,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy+60), font, font_size, (0,255,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "-", (cx+60, cy), font, font_size, (0,255,255), 1, cv2.LINE_AA)
+                        
+                                else: 
+                                    cv2.circle(outimg,(cx,cy),100,(0,0,255),thickness=2,lineType=8,shift=0)
+                                    cv2.circle(outimg,(cx,cy),75,(0,0,255),thickness=1,lineType=8,shift=0)
+                                    cv2.putText(outimg, "-", (cx-70, cy), font, font_size, (0,0,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy-63), font, font_size, (0,0,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "|", (cx, cy+71), font, font_size, (0,0,255), 1, cv2.LINE_AA)
+                                    cv2.putText(outimg, "-", (cx+65, cy), font, font_size, (0,0,255), 1, cv2.LINE_AA)
+                                
+            if str(round(time.process_time()))[-1] == "0" or str(round(time.process_time()))[-1] == "1" or str(round(time.process_time()))[-1] == "4" or str(round(time.process_time()))[-1] == "7":
+                if headless == False: cv2.putText(outimg, "Team250 Piggy Vision (OO)~", (400, 475), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            elif str(round(time.process_time()))[-1] == "0" or str(round(time.process_time()))[-1] == "2" or str(round(time.process_time()))[-1] == "5" or str(round(time.process_time()))[-1] == "8":
+                if headless == False: cv2.putText(outimg, "Team250 Piggy Vision (OO)`", (400, 475), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            elif str(round(time.process_time()))[-1] == "0" or str(round(time.process_time()))[-1] == "3" or str(round(time.process_time()))[-1] == "6" or str(round(time.process_time()))[-1] == "9":
+                if headless == False: cv2.putText(outimg, "Team250 Piggy Vision (OO)^", (400, 475), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+ 
+            # tx is center of target's x; ty is center of target's y
+     
+            if headless == False and debug == True: cv2.putText(outimg, "Turn -> " + str(round(closest_dock,2)) + " degrees to target", (25, 15), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+             
+            if direction == "hatch":  # Low Camera!
+                vertical_angle = ((abs((cy-HORIZON_Y)) / VERTICAL_PXL_PER_DEGREE)) 
+                distance = ((TARGET_HEIGHT - CAMERA_HEIGHT) /(math.tan(math.radians(vertical_angle))))# - camera_distance_from_front_bumper
+#                distance = ((TARGET_HEIGHT - CAMERA_HEIGHT) /(math.tan(math.radians(vertical_angle)+math.radians(VERTICAL_DEGREES_OFFSET)))) - camera_distance_from_front_bumper
+            else: # High Camera!
+                vertical_angle = ((abs((cy-HORIZON_Y)) / VERTICAL_PXL_PER_DEGREE)) 
+                distance = ((CAMERA_HEIGHT - TARGET_HEIGHT) /(math.tan(math.radians(vertical_angle))))
+                
+            if headless == False and debug == True: cv2.putText(outimg, "Distance From Target -> " + str(round(distance,2)), (25, 30), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            if headless == False and debug == True: cv2.putText(outimg, "Center Vertical Angle -> " + str(round(vertical_angle,2)), (25, 45), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+ 
+ #--------------------------------------Accounting for offset of camera in angles---------------------------------#
+                #The following code calculates the angle to the robot's center instead of the camera.
+            Ha=closest_dock
+            d1=distance
+            j=12.0 #distance between camera and robot center in inches
+            d2=math.sqrt(math.pow(j,2)+math.pow(d1,2)-(2*d1*j*math.cos(math.radians(Ha))))
+            newAngle=math.degrees(math.asin(math.sin(math.radians(Ha))* d1/d2)) 
+                    
+            if headless == False and debug == True: cv2.putText(outimg, "D2 = " + str(round(d2,2)) + "; newAngle: " + str(round(newAngle,2)), (25, 75
+            ), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+                
+            jevois.sendSerial("Angle:" + str(round(newAngle,2)) + ",Distance:" + str(round(distance,0)))
+            cv2.putText(outimg, "A: " + str(round(newAngle,2)), (25, 110), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+            cv2.putText(outimg, "D: " + str(round(distance,0)), (85, 110), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+                # Write frames/s info from our timer into the edge map (NOTE: does not account for output conversion time):
+            fps = self.jevois_timer.stop()
+        
+            height, width, channels = outimg.shape
+            if headless == False: cv2.putText(outimg, fps, (3, height - 6), font, font_size, (b, g, r), 1, cv2.LINE_AA)
+
+        else:
+            if headless == False: cv2.putText(outimg, "*** No target in view! ***", (250, 240), font, font_size, (b,g,r), 1, cv2.LINE_AA)            
+            jevois.sendSerial("Angle:-99.99,Distance:-99.99")
+
+            # Convert our BGR output image to video output format and send to host over USB. If your output image is not
+            # BGR, you can use sendCvGRAY(), sendCvRGB(), or sendCvRGBA() as appropriate:
+        
+        #outframe.sendCv(outimg) 
+        outframe.sendCvBGR(outimg,25) #COMPRESSION!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        #outframe.sendCvBGR(outimg)
+        #outframe.sendCvGRAY(outimg)
